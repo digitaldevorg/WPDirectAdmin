@@ -68,6 +68,7 @@ class WPDirectAdmin {
 			add_action('wp_ajax_get_server', [$this, 'get_server']);
 			add_action('wp_ajax_reset_window', [$this, 'resetWindow']);
 			add_action('wp_ajax_remove_server', [$this, 'removeServer']);
+			add_action('wp_ajax_save_log_setting', [$this, 'save_log_setting']);
 
 
 			add_action('wp_ajax_unlock_user', [$this, 'unlock_user']);
@@ -103,7 +104,20 @@ class WPDirectAdmin {
 		
 		//end of cron
 	}
+	function save_log_setting(){
+		global $wpdb;
+		$nonce = sanitize_text_field($_REQUEST['nonce']);
+		$log = sanitize_text_field($_REQUEST['logtype']);
+		$current_user = wp_get_current_user();
 
+		if ( current_user_can('administrator') && wp_verify_nonce($nonce, 'wpda')) {
+			update_option('wpda_log_level', $log);
+			
+			$log = $current_user->user_login.' changed log level to: '.strtoupper($log);
+			$this->writeToLog($log, 'force');
+		}
+		wp_die();
+	}
 	function errorServerConnect(){
 		?>
 		<div class="el-license-container" id="admin_error">
@@ -208,7 +222,8 @@ class WPDirectAdmin {
 	}
 	function writeToLog($data, $type){
 		
-		//$type == warn, error, all, none
+		//$type == warn, error, all, none, force
+		
 		$setting = get_option('wpda_log_level');
 		
 		if (!$setting) {
@@ -221,8 +236,14 @@ class WPDirectAdmin {
 		//file_put_contents($logpath.$logfile, $txt, FILE_APPEND);
 		
 		switch ($setting) {
+			
 			case "none":
 			//do nothing
+			if ($type == 'force') {
+				//force a write regardless of setting.
+				$txt = '['.date("d-m-Y H:i:s").'] (NOTICE) '.$data."\n";
+				file_put_contents($logpath.$logfile, $txt, FILE_APPEND);
+			}
 			break;
 			case 'all':
 			$txt = '['.date("d-m-Y H:i:s").'] '.$data."\n";
@@ -241,6 +262,11 @@ class WPDirectAdmin {
 				$txt = '['.date("d-m-Y H:i:s").'] (ERROR) '.$data."\n";
 				file_put_contents($logpath.$logfile, $txt, FILE_APPEND);
 			}
+			if ($type == 'force') {
+				//force a write regardless of setting.
+				$txt = '['.date("d-m-Y H:i:s").'] (NOTICE) '.$data."\n";
+				file_put_contents($logpath.$logfile, $txt, FILE_APPEND);
+			}
 			break;
 			
 			case 'warn':
@@ -252,10 +278,16 @@ class WPDirectAdmin {
 				$txt = '['.date("d-m-Y H:i:s").'] (ERROR) '.$data."\n";
 				file_put_contents($logpath.$logfile, $txt, FILE_APPEND);
 			}
+			if ($type == 'force') {
+				//force a write regardless of setting.
+				$txt = '['.date("d-m-Y H:i:s").'] (NOTICE) '.$data."\n";
+				file_put_contents($logpath.$logfile, $txt, FILE_APPEND);
+			}
 			break;
 			
 		}
 
+		do_action('wpda_log_event', $data, $type, $setting);
 		
 	}
 	function unlock_user()
@@ -1619,10 +1651,28 @@ function formatUptime($uptime){
 		return $this->responseObj->pro;
     }
     function application_settings(){
+		
     	?>
 		<div class="el-license-container" id="admin_bapp_settings">
 		<h3>
 		<i class="fa-solid fa-screwdriver-wrench"></i> Application Settings</h3>
+		<hr>
+		Logging Level:
+		<div id="radioset" role="toolbar" class="ui-controlgroup ui-controlgroup-horizontal ui-helper-clearfix">
+			<input onclick="jsSetLogging('none');" type="radio" id="radio1" name="radio" class="ui-checkboxradio ui-helper-hidden-accessible">
+			<label id="r_none" for="radio1" class="ui-button ui-widget ui-checkboxradio-radio-label ui-controlgroup-item ui-checkboxradio-label ui-corner-left <?
+				if (get_option('wpda_log_level') == 'none') { ?>ui-checkboxradio-checked ui-state-active<? } ?>"><span class="ui-checkboxradio-icon ui-corner-all ui-icon ui-icon-background ui-icon-blank"></span><span class="ui-checkboxradio-icon-space"> </span>None</label>
+				<input onclick="jsSetLogging('all');" type="radio" id="radio2" name="radio" class="ui-checkboxradio ui-helper-hidden-accessible">
+			<label id="r_all" for="radio2" class="ui-button ui-widget ui-checkboxradio-radio-label ui-checkboxradio-label ui-controlgroup-item <?
+			if (get_option('wpda_log_level') == 'all' || !get_option('wpda_log_level')) { ?>ui-checkboxradio-checked ui-state-active<? } ?>"><span class="ui-checkboxradio-icon ui-corner-all ui-icon ui-icon-background ui-icon-blank"></span><span class="ui-checkboxradio-icon-space"> </span>All</label>
+			<input onclick="jsSetLogging('warn');" type="radio" id="radio3" name="radio" class="ui-checkboxradio ui-helper-hidden-accessible">
+			<label id="r_warn" for="radio3" class="ui-button ui-widget ui-checkboxradio-radio-label ui-controlgroup-item ui-checkboxradio-label <?
+			if (get_option('wpda_log_level') == 'warn') { ?>ui-checkboxradio-checked ui-state-active<? } ?>"><span class="ui-checkboxradio-icon ui-corner-all ui-icon ui-icon-background ui-icon-blank"></span><span class="ui-checkboxradio-icon-space"> </span>Warn</label>
+			<input onclick="jsSetLogging('error');" type="radio" id="radio4" name="radio" class="ui-checkboxradio ui-helper-hidden-accessible">
+			<label id="r_error" for="radio4" class="ui-button ui-widget ui-checkboxradio-radio-label ui-controlgroup-item ui-checkboxradio-label ui-corner-right <?
+			if (get_option('wpda_log_level') == 'error') { ?>ui-checkboxradio-checked ui-state-active<? } ?>"><span class="ui-checkboxradio-icon ui-corner-all ui-icon ui-icon-background ui-icon-blank"></span><span class="ui-checkboxradio-icon-space"> </span>Errors</label>
+		</div>
+		
 		</div>
 		<div class="el-license-container" id="admin_block_user">
 		<?php

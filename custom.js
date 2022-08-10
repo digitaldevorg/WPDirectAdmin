@@ -8,7 +8,30 @@ function toggleTick(toggle){
 		}
 	});	
 }
+function jsSetLogging(log){
+	jQuery(document).ready(function($) {
+		
+		//ui-checkboxradio-checked ui-state-active
+		$("#r_all").removeClass('ui-checkboxradio-checked ui-state-active');
+		$("#r_none").removeClass('ui-checkboxradio-checked ui-state-active');
+		$("#r_warn").removeClass('ui-checkboxradio-checked ui-state-active');
+		$("#r_error").removeClass('ui-checkboxradio-checked ui-state-active');
+		
+		
+		$("#r_"+log).addClass('ui-checkboxradio-checked ui-state-active');
+		//now change the log level
+		var data = {
+			'action': 'save_log_setting',
+			'nonce': wpda.nonce,
+			'logtype': log
+		};
 
+		jQuery.post(wpda.ajaxurl, data, function(response) {
+			//document.location.href='';
+		});		
+		
+	});	
+}
 function viewPackage(elem){
 	jQuery(document).ready(function($) {
 		$("#"+elem).slideToggle();

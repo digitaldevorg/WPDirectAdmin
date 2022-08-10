@@ -1,4 +1,4 @@
-=== WPDirectAdmin Plugin ===
+=== WPDirectAdmin ===
 Contributors: digitaldevs
 Donate link: https://digitaldev.org.uk/
 Tags: directadmin, api, control, panel
@@ -45,3 +45,4 @@ Some minor fixes to SQL statements within core functions.
 = 1.4.0.2 =
 New action hooks available for 3rd party integrations or plugins. See more at - https://community.digitaldev.org.uk/forum-10.html
 Added in new writeToLog function to start writing logs and log system functions.
+Added new logging feature on all functions, and a log level setting in admin area.
