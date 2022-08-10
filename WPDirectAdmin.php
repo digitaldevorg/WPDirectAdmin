@@ -208,15 +208,22 @@ class WPDirectAdmin {
 	}
 	function writeToLog($data, $type){
 		
-		//$type == warn, error, all
-		$setting = 'all';
+		//$type == warn, error, all, none
+		$setting = get_option('wpda_log_level');
 		
-		$logfile = 'log_'.date("d-m-Y").'.txt';
+		if (!$setting) {
+			$setting = 'all';
+		}
+		
+		$logfile = 'log_'.date("d-m-Y").'.log';
 		$logpath = plugin_dir_path( __DIR__ ).'/WPDirectAdmin/logs/';
 		//$txt = '['.date("d-m-Y H:i:s").'] '.$data."\n";
 		//file_put_contents($logpath.$logfile, $txt, FILE_APPEND);
 		
 		switch ($setting) {
+			case "none":
+			//do nothing
+			break;
 			case 'all':
 			$txt = '['.date("d-m-Y H:i:s").'] '.$data."\n";
 			if ($type == 'warn') {
@@ -316,6 +323,7 @@ class WPDirectAdmin {
 		$nonce = sanitize_text_field($data['nonce']);
 		$server = sanitize_text_field($data['server']);
 		$passwd = $data['passwdchng'];
+		$current_user = wp_get_current_user();
 		
 		if (!$passwd) {
 			$_SESSION['daerror'] = '<b>Missing Password</b>, Cannot change password.';
@@ -339,6 +347,9 @@ class WPDirectAdmin {
 			
 			if (!$result['error'] || $reuslt['error']<1) {
 
+				$log = $current_user->user_login.' changed password for user: '.$data['user'];
+				$this->writeToLog($log, 'all');
+
 				do_action('wpda_pass_change', $data['user'], $user_info['email']);
 				
 			}
@@ -357,6 +368,9 @@ class WPDirectAdmin {
 			
 			}
 			if ($request['error']==1) {
+				$log = 'Error changing password for user: '.$data['user'].'('.$result['text'].' '.$result['details'].')';
+				$this->writeToLog($log, 'error');
+				
 				$_SESSION['daerror'] = '<b>'.$result['text'].'</b> - '.$result['details'];
 			}
 		}
@@ -621,6 +635,7 @@ class WPDirectAdmin {
 		global $wpdb;
 		$data = $_POST['data'];
 		$nonce = sanitize_text_field($data['nonce']);
+		$current_user = wp_get_current_user();
 		
 		if ( current_user_can('administrator') && wp_verify_nonce($nonce, 'wpda')) {
 
@@ -675,6 +690,9 @@ class WPDirectAdmin {
 				$table = $wpdb->prefix."da_account_links";
     
 	$wpdb->query("INSERT INTO $table (wpuid, serverid, user_ref) VALUES (".$wpuid.", ".$serverid.", '".$username."')");
+			
+	$log = $current_user->user_login.' added new user: '.$username.' to server #ID'.$serverid;
+	$this->writeToLog($log, 'all');
 				
 			}
 			$da->logout(TRUE);
@@ -684,6 +702,9 @@ class WPDirectAdmin {
 			if ($result['error'] == 1) {
 
 				$_SESSION['daerror'] = '<b>'.$result['text'].'</b> - '.$result['details'];
+				
+				$log = 'Error adding user - ('.$result['text'].') '.$result['details'].' '.serialize($formdata);
+				$this->writeToLog($log, 'error');
 			}
 		}
 		wp_safe_redirect(admin_url( 'admin.php?page=wpda&sub=users&server='.$serverid));
@@ -706,6 +727,9 @@ class WPDirectAdmin {
 	}
     function updateApp(){
     	global $wpdb;
+    	
+		add_option('wpda_log_level', 'none');
+		
     	//insert table if not exists
     	
 		$table = $wpdb->prefix."da_server_notifications";
@@ -914,68 +938,13 @@ function hasWPLink($user, $server){
 		$package = sanitize_text_field($_REQUEST['package']);
 		$server = sanitize_text_field($_REQUEST['server']);
 		$type = sanitize_text_field($_REQUEST['type']);
-		$nonce = sanitize_text_field($_REQUEST['nonce']);    
+		$nonce = sanitize_text_field($_REQUEST['nonce']); 
+		$current_user = wp_get_current_user();
+		   
 		if ( current_user_can('administrator') && wp_verify_nonce($nonce, 'wpda')) {
-			
-			//we can delete()
-			//delete if default
-			if (get_option('wpda_default_package') == $package) {
-				update_option('wpda_default_package', '');
-			}
-			if (get_option('wpda_default_package_reseller') == $package) {
-				update_option('wpda_default_package_reseller', '');
-			}			
-			//look for users on this package and switch to default
-			
+
 			$da = $this->serverConn($server);
 			//look for users on this package and switch to default
-			
-			switch ($type){
-				
-				case 'RESELLER':
-				$resellers = $da->query("CMD_API_SHOW_RESELLERS");
-				$opt = 'wpda_default_package_reseller';
-				$opt = $wpdb->get_var("SELECT RESELLER_PACKAGE from $table where server_id=".$server);
-				$cmd = 'CMD_API_MANAGE_RESELLER_PACKAGES';
-				$modcmd = 'CMD_API_MODIFY_RESELLER';
-				if ($package == $opt) {
-					$wpdb->query("UPDATE $table set RESELLER_PACKAGE = '' WHERE server_id=".$server);
-				}
-				
-				break;
-				
-				case 'USER':
-				//CMD_API_PACKAGES_USER
-				$resellers = $da->query("CMD_API_SHOW_ALL_USERS");
-				$opt = 'wpda_default_package';
-				//get $opt from server data
-				$opt = $wpdb->get_var("SELECT USER_PACKAGE from $table where server_id=".$server);
-				$cmd = 'CMD_API_MANAGE_USER_PACKAGES';
-				$modcmd = 'CMD_API_MODIFY_USER';
-				if ($package == $opt) {
-					$wpdb->query("UPDATE $table set USER_PACKAGE = '' WHERE server_id=".$server);
-				}
-				break;
-			}
-			foreach ($resellers as $rec => $reseller) {
-				// 	CMD_API_SHOW_USER_CONFIG
-
-				$account_info = $da->query("CMD_API_SHOW_USER_CONFIG", array(
-				"user" => $reseller
-				), "GET");
-				//print_r($account_info);
-				if ($package == $account_info['package']) {
-					//switch the user to defalt.
-					$result = $da->query($modcmd, array(
-					"action"	=> 'package',
-					"user"	=> $reseller,
-					"package"	=> $opt
-					), "POST");
-					
-				}
-
-
-			}
 			
 			$result = $da->query($cmd, array(
 			"delete"	=> 'yes',
@@ -984,6 +953,62 @@ function hasWPLink($user, $server){
 			), "POST");
 
 			$da->logout(TRUE);
+			
+			if ($result['error']<1 || !$result['error']) {
+				switch ($type) {
+
+					case 'RESELLER':
+						$resellers = $da->query("CMD_API_SHOW_RESELLERS");
+						$opt = 'wpda_default_package_reseller';
+						$opt = $wpdb->get_var("SELECT RESELLER_PACKAGE from $table where server_id=".$server);
+						$cmd = 'CMD_API_MANAGE_RESELLER_PACKAGES';
+						$modcmd = 'CMD_API_MODIFY_RESELLER';
+						if ($package == $opt) {
+							$wpdb->query("UPDATE $table set RESELLER_PACKAGE = '' WHERE server_id=".$server);
+						}
+
+						break;
+
+					case 'USER':
+						//CMD_API_PACKAGES_USER
+						$resellers = $da->query("CMD_API_SHOW_ALL_USERS");
+						$opt = 'wpda_default_package';
+						//get $opt from server data
+						$opt = $wpdb->get_var("SELECT USER_PACKAGE from $table where server_id=".$server);
+						$cmd = 'CMD_API_MANAGE_USER_PACKAGES';
+						$modcmd = 'CMD_API_MODIFY_USER';
+						if ($package == $opt) {
+							$wpdb->query("UPDATE $table set USER_PACKAGE = '' WHERE server_id=".$server);
+						}
+						break;
+				}
+				foreach ($resellers as $rec => $reseller) {
+					// 	CMD_API_SHOW_USER_CONFIG
+
+					$account_info = $da->query("CMD_API_SHOW_USER_CONFIG", array(
+					"user" => $reseller
+					), "GET");
+					//print_r($account_info);
+					if ($package == $account_info['package']) {
+						//switch the user to defalt.
+						$result = $da->query($modcmd, array(
+						"action"	=> 'package',
+						"user"	=> $reseller,
+						"package"	=> $opt
+						), "POST");
+
+					}
+
+
+				}
+				//log()
+				$log = $current_user->user_login.' removed package ('.$package.') from server #'.$server;
+				$this->writeToLog($log, 'all');
+			} else {
+				//error
+				$log = 'Error removing package ('.$package.') '.$result['text'].' '.$result['details'];
+				$this->writeToLog($log, 'error');
+			}
 			
 
 		}	
@@ -1008,10 +1033,17 @@ function hasWPLink($user, $server){
 			
 			$da->logout(TRUE);
 			
-			$wpdb->query("DELETE FROM $table where serverid=".$server." and user_ref = '".$user."'");
-
+			if($result['error']<1 || !$result['error']){
+				$wpdb->query("DELETE FROM $table where serverid=".$server." and user_ref = '".$user."'");
+				$log = $current_user->user_login.' removed user: '.$user.' from server #'.$server;
+				$this->writeToLog($log, 'all');
+				do_action('wpda_deleted_user', $user, $current_user->user_login);
+			} else {
+				$log = 'Error deleting user from server #'.$server.' ('.$result['text'].') '.$result['details'];
+				$this->writeToLog($log, 'error');
+			}
 		}
-		do_action('wpda_deleted_user', $user, $current_user->user_login);
+		
 		wp_die();
     }
     function add_server(){
@@ -1023,6 +1055,7 @@ function hasWPLink($user, $server){
 			$server_module = sanitize_text_field($_REQUEST['server_module']);
 			$server_username = sanitize_text_field($_REQUEST['server_username']);
 			$server_password = sanitize_text_field($_REQUEST['server_password']);
+			$current_user = wp_get_current_user();
 			
 			$userpass = $server_username."::".$server_password;
 			if (function_exists('mcrypt_encrypt')) {
@@ -1031,10 +1064,14 @@ function hasWPLink($user, $server){
 			}
 			
 			$table = $wpdb->prefix."da_server_list";
+			
 			$sql = $wpdb->prepare("INSERT INTO $table (server_friendly_name, server_host, server_port, server_userpass, server_module) VALUES ('%s', '%s', '%d', '%s', '%s')", array($server_friendly_name, $server_host, $server_port, $userpass, $server_module));
 			$wpdb->query($sql);
+			
 		}
-		
+		$serverid = $wpdb->insert_id;
+		$log = $current_user->user_login.' added server #'.$serverid;
+		$this->writeToLog($log, 'all');
 		wp_die();
     }
     function xInstall(){
@@ -1089,6 +1126,7 @@ function hasWPLink($user, $server){
 		
 		add_option('wpda_default_package', '');
 		add_option('wpda_default_package_reseller', '');
+		add_option('wpda_log_level', 'none');
     }
     function getServerInfo($server, $info){
 		global $wpdb;
@@ -1112,6 +1150,7 @@ function hasWPLink($user, $server){
 		
 		delete_option('wpda_default_package');
 		delete_option('wpda_default_package_reseller');
+		delete_option('wpda_log_level');
     	
     }
     function SetAdminStyle() {
