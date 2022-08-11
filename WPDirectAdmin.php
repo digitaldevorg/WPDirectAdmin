@@ -69,6 +69,8 @@ class WPDirectAdmin {
 			add_action('wp_ajax_reset_window', [$this, 'resetWindow']);
 			add_action('wp_ajax_remove_server', [$this, 'removeServer']);
 			add_action('wp_ajax_save_log_setting', [$this, 'save_log_setting']);
+			add_action('wp_ajax_get_logsize', [$this, 'get_logsize']);
+			add_action('wp_ajax_get_lastlog', [$this, 'lastLog']);
 
 
 			add_action('wp_ajax_unlock_user', [$this, 'unlock_user']);
@@ -219,6 +221,55 @@ class WPDirectAdmin {
 
 		}
 		wp_die();
+	}
+	function get_logsize(){
+		clearstatcache();
+		$logfile = 'log_'.date("d-m-Y").'.log';
+		$logpath = plugin_dir_path( __DIR__ ).'/WPDirectAdmin/logs/';
+
+		if (!file_exists($logpath.$logfile)) {
+			echo 0;
+		} else {
+			echo filesize($logpath.$logfile);
+		}			
+		wp_die();
+	}
+	function lastLog()
+	{
+		$logfile = 'log_'.date("d-m-Y").'.log';
+		$logpath = plugin_dir_path( __DIR__ ).'/WPDirectAdmin/logs/';
+		$f = fopen($logpath.$logfile, 'r');
+		$cursor = -1;
+		fseek($f, $cursor, SEEK_END);
+		$char = fgetc($f);
+		//Trim trailing newline characters in the file
+		while ($char === "\n" || $char === "\r") {
+			fseek($f, $cursor--, SEEK_END);
+			$char = fgetc($f);
+		}
+		//Read until the next line of the file begins or the first newline char
+		while ($char !== false && $char !== "\n" && $char !== "\r") {
+			//Prepend the new character
+			$line = $char . $line;
+			fseek($f, $cursor--, SEEK_END);
+			$char = fgetc($f);
+		}
+		
+		echo $line;
+		
+		wp_die();
+	}
+	
+	function logSize(){
+		clearstatcache();
+		$logfile = 'log_'.date("d-m-Y").'.log';
+		$logpath = plugin_dir_path( __DIR__ ).'/WPDirectAdmin/logs/';
+		
+		if (!file_exists($logpath.$logfile)) {
+			return 0;
+		} else {
+			return filesize($logpath.$logfile);
+		}	
 	}
 	function writeToLog($data, $type){
 		
@@ -1671,7 +1722,8 @@ function formatUptime($uptime){
 			<input onclick="jsSetLogging('error');" type="radio" id="radio4" name="radio" class="ui-checkboxradio ui-helper-hidden-accessible">
 			<label id="r_error" for="radio4" class="ui-button ui-widget ui-checkboxradio-radio-label ui-controlgroup-item ui-checkboxradio-label ui-corner-right <?
 			if (get_option('wpda_log_level') == 'error') { ?>ui-checkboxradio-checked ui-state-active<? } ?>"><span class="ui-checkboxradio-icon ui-corner-all ui-icon ui-icon-background ui-icon-blank"></span><span class="ui-checkboxradio-icon-space"> </span>Errors</label>
-		</div>
+			</div>
+			&nbsp;<button class="button">Log Viewer</button>
 		
 		</div>
 		<div class="el-license-container" id="admin_block_user">
@@ -1717,7 +1769,74 @@ switch ($_REQUEST['sub']){
 	break;
 }
 ?>
+<style>
+	#snackbar {
+		visibility: hidden;
+		min-width: 250px;
+		margin-left: -125px;
+		background-color: #333;
+		color: #fff;
+		text-align: center;
+		border-radius: 2px;
+		padding: 16px;
+		position: fixed;
+		z-index: 1;
+		left: 50%;
+		bottom: 30px;
+		font-size: 17px;
+	}
 
+	#snackbar.show {
+		visibility: visible;
+
+	}
+
+	@-webkit-keyframes fadein {
+		from {
+			bottom: 0;
+	opacity: 0;
+		}
+		to {
+			bottom: 30px;
+	opacity: 1;
+		}
+	}
+
+	@keyframes fadein {
+		from {
+			bottom: 0;
+	opacity: 0;
+		}
+		to {
+			bottom: 30px;
+	opacity: 1;
+		}
+	}
+
+	@-webkit-keyframes fadeout {
+		from {
+			bottom: 30px;
+	opacity: 1;
+		}
+		to {
+			bottom: 0;
+	opacity: 0;
+		}
+	}
+
+	@keyframes fadeout {
+		from {
+			bottom: 30px;
+	opacity: 1;
+		}
+		to {
+			bottom: 0;
+	opacity: 0;
+		}
+	}
+</style>
+<input type="hidden" id="logfilesize" value="<? echo $this->logSize(); ?>">
+<div id="snackbar"></div>
         <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
             <input type="hidden" name="action" value="WPDirectAdmin_el_deactivate_license"/>
             <div class="el-license-container">

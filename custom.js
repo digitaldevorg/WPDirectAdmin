@@ -1,3 +1,17 @@
+let context = null;
+
+const beep = (freq = 520, duration = 300, vol = 60) => {
+	const oscillator = context.createOscillator();
+	const gain = context.createGain();
+	oscillator.connect(gain);
+	oscillator.frequency.value = freq;
+	oscillator.type = "square";
+	gain.connect(context.destination);
+	gain.gain.value = vol * 0.01;
+	oscillator.start(context.currentTime);
+	oscillator.stop(context.currentTime + duration * 0.001);
+}
+
 function toggleTick(toggle){
 	jQuery(document).ready(function($) {
 		var val = $("#"+toggle).val();
@@ -471,7 +485,7 @@ function jsServerSet(server)
 	jQuery(document).ready(function($) {
 		$("#server_set_dialog").dialog("open");
 		
-				var data = {
+		var data = {
 			'action': 'get_server',
 			'server': server
 		};
@@ -482,4 +496,51 @@ function jsServerSet(server)
 
 
 	});
+}
+
+function alertLogs(){
+	jQuery(document).ready(function($) {
+		var current = $("#logfilesize").val();
+		var now = 0;
+		
+		var data = {
+			'action': 'get_logsize'
+		};
+
+		jQuery.post(wpda.ajaxurl, data, function(response) {
+			$("#logfilesize").val(response);
+			var now = response;
+			if (current !== now) {
+				var data = {
+					'action': 'get_lastlog'
+				};
+
+				jQuery.post(wpda.ajaxurl, data, function(response) {
+					$("#snackbar").html(response);
+					var x = document.getElementById("snackbar");
+					if (x.className !== 'show') {
+					x.className = "show";
+					setTimeout(function() { 
+					x.className = x.className.replace("show", "");
+					$("#snackbar").html('');
+					}, 5000);
+					    context = new AudioContext();
+					beep();
+								}
+
+				});
+	
+			}
+			setTimeout(function() {
+				alertLogs();
+			}, 10000);
+		});
+		
+	});	
+
+}
+//automatic refresh for functions
+var logfilesize = document.getElementById('logfilesize');
+if (logfilesize) {
+	alertLogs();
 }
